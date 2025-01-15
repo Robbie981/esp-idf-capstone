@@ -1,26 +1,31 @@
-/*
- * SPDX-FileCopyrightText: 2021-2023 Espressif Systems (Shanghai) CO LTD
- *
- * SPDX-License-Identifier: CC0-1.0
- *
- * OpenThread Radio Co-Processor (RCP) Example
- *
- * This example code is in the Public Domain (or CC0-1.0 licensed, at your option.)
- *
- * Unless required by applicable law or agreed to in writing, this
- * software is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
- * CONDITIONS OF ANY KIND, either express or implied.
- */
-
 #include <stdio.h>
 #include <unistd.h>
+#include <string.h>
 
+#include "sdkconfig.h"
+#include "esp_err.h"
 #include "esp_event.h"
-#include "nvs_flash.h"
+#include "esp_log.h"
+#include "esp_netif.h"
+#include "esp_netif_types.h"
 #include "esp_openthread.h"
+#include "esp_openthread_cli.h"
+#include "esp_openthread_lock.h"
+#include "esp_openthread_netif_glue.h"
+#include "esp_openthread_types.h"
 #include "esp_ot_config.h"
 #include "esp_vfs_eventfd.h"
 #include "driver/uart.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "hal/uart_types.h"
+#include "nvs_flash.h"
+#include "openthread/cli.h"
+#include "openthread/instance.h"
+#include "openthread/logging.h"
+#include "openthread/tasklet.h"
+#include "openthread/thread.h"
+#include "openthread/udp.h"
 
 #if CONFIG_EXTERNAL_COEX_ENABLE
 #include "esp_coexist.h"

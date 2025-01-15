@@ -28,12 +28,12 @@
 #include "openthread/udp.h"
 
 /*************DEFINES START*************/
-#define MY_THREAD_PANID 0x2222 // 16 bit
+#define MY_THREAD_PANID 0x2222                                               // 16 bit
 #define MY_THREAD_EXT_PANID {0x22, 0x22, 0x00, 0x00, 0xab, 0xce, 0x11, 0x22} // 64 bit
 #define MY_THREAD_NETWORK_NAME "my_ot_network"
-#define MY_MESH_LOCAL_PREFIX {0xfd, 0x00, 0x00, 0x00, 0xfb, 0x01, 0x00, 0x01} // 64 bits, first 8 bits always 0xfd 
+#define MY_MESH_LOCAL_PREFIX {0xfd, 0x00, 0x00, 0x00, 0xfb, 0x01, 0x00, 0x01}                                                  // 64 bits, first 8 bits always 0xfd
 #define MY_THREAD_NETWORK_KEY {0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff} // ot default key
-/*************DEFINES END*************/
+                                                                                                                               /*************DEFINES END*************/
 
 /*************GLOBALS START*************/
 static esp_netif_t *openthread_netif = NULL;
@@ -53,8 +53,8 @@ static void config_thread_dataset(void)
 {
     otInstance *myOtInstance = esp_openthread_get_instance();
     otOperationalDataset aDataset;
-    
-    // overwrite current active dataset 
+
+    // overwrite current active dataset
     ESP_ERROR_CHECK(otDatasetGetActive(myOtInstance, &aDataset));
     memset(&aDataset, 0, sizeof(otOperationalDataset));
 
@@ -139,33 +139,34 @@ static void thread_process(void *aContext)
 
 void udp_handle_recieve(void *aContext, otMessage *aMessage, const otMessageInfo *aMessageInfo)
 {
-  uint16_t payloadLength = otMessageGetLength(aMessage) - otMessageGetOffset(aMessage);
-  char buf[payloadLength];
-  otMessageRead(aMessage, otMessageGetOffset(aMessage), buf, payloadLength);
-  otCliOutputFormat(buf);
+    uint16_t payloadLength = otMessageGetLength(aMessage) - otMessageGetOffset(aMessage);
+    char buf[payloadLength];
+    otMessageRead(aMessage, otMessageGetOffset(aMessage), buf, payloadLength);
+    otCliOutputFormat(buf);
 }
 
 static void udp_init(void)
 {
-  otError error = OT_ERROR_NONE;
-  otInstance *myOtInstance = esp_openthread_get_instance();
-  otUdpSocket mySocket;
-  otSockAddr mySockAddr;
-  memset(&mySockAddr, 0, sizeof(mySockAddr));
-  mySockAddr.mPort = 1234;
+    otError error = OT_ERROR_NONE;
+    otInstance *myOtInstance = esp_openthread_get_instance();
+    otUdpSocket mySocket;
+    otSockAddr mySockAddr;
+    memset(&mySockAddr, 0, sizeof(mySockAddr));
+    mySockAddr.mPort = 1234;
 
-  do
-  {
-    error = otUdpOpen(myOtInstance, &mySocket, udp_handle_recieve, NULL);
-    if (error != OT_ERROR_NONE) break;
+    do
+    {
+        error = otUdpOpen(myOtInstance, &mySocket, udp_handle_recieve, NULL);
+        if (error != OT_ERROR_NONE)
+            break;
 
-    error = otUdpBind(myOtInstance, &mySocket,&mySockAddr, OT_NETIF_THREAD);
-  } while (false);
+        error = otUdpBind(myOtInstance, &mySocket, &mySockAddr, OT_NETIF_THREAD);
+    } while (false);
 
-  if (error != OT_ERROR_NONE)
-  {
-    printf("init_udp error!\n");
-  }
+    if (error != OT_ERROR_NONE)
+    {
+        printf("init_udp error!\n");
+    }
 }
 
 void app_main(void)
@@ -188,5 +189,4 @@ void app_main(void)
     thread_network_start();
     udp_init();
     xTaskCreate(thread_process, "ot_cli_main", 10240, xTaskGetCurrentTaskHandle(), 5, NULL);
-
 }

@@ -44,6 +44,12 @@ examples/**/build_*_*/
 examples/**/sdkconfig
 examples/**/sdkconfig.old
 
+# my_project project files
+my_project/**/build/
+my_project/**/build_*_*/
+my_project/**/sdkconfig
+my_project/**/sdkconfig.old
+
 # Unit test app files
 tools/unit-test-app/build
 tools/unit-test-app/build_*_*/
