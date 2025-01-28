@@ -33,7 +33,7 @@
 #define MY_THREAD_NETWORK_NAME "my_ot_network"
 #define MY_MESH_LOCAL_PREFIX {0xfd, 0x00, 0x00, 0x00, 0xfb, 0x01, 0x00, 0x01}                                                  // 64 bits, first 8 bits always 0xfd
 #define MY_THREAD_NETWORK_KEY {0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff} // ot default key
-                                                                                                                               /*************DEFINES END*************/
+/*************DEFINES END*************/
 
 /*************GLOBALS START*************/
 static esp_netif_t *openthread_netif = NULL;
