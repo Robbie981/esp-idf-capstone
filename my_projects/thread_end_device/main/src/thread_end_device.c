@@ -27,6 +27,7 @@
 #include "openthread/thread.h"
 #include "openthread/udp.h"
 #include "coap_client.h"
+#include "sensors.h"
 
 /*************DEFINES START*************/
 #define MY_THREAD_PANID 0x2222 // 16 bit
@@ -50,58 +51,32 @@ static esp_netif_t *init_openthread_netif(const esp_openthread_platform_config_t
     return netif;
 }
 
-// static void config_thread_dataset(void)
-// {
-//     otInstance *myOtInstance = esp_openthread_get_instance();
-//     otOperationalDataset aDataset;
+static void config_joiner_dataset(void)
+{
+    otInstance *myOtInstance = esp_openthread_get_instance();
+    otOperationalDataset aDataset;
     
-//     // overwrite current active dataset 
-//     ESP_ERROR_CHECK(otDatasetGetActive(myOtInstance, &aDataset));
-//     memset(&aDataset, 0, sizeof(otOperationalDataset));
+    // Set dataset networkkey for joiner
+    ESP_ERROR_CHECK(otDatasetGetActive(myOtInstance, &aDataset));
+    memset(&aDataset, 0, sizeof(otOperationalDataset));
 
-//     aDataset.mActiveTimestamp.mSeconds = 0;
-//     aDataset.mComponents.mIsActiveTimestampPresent = true;
+    uint8_t key[OT_NETWORK_KEY_SIZE] = MY_THREAD_NETWORK_KEY;
+    memcpy(aDataset.mNetworkKey.m8, key, sizeof(aDataset.mNetworkKey));
+    aDataset.mComponents.mIsNetworkKeyPresent = true;
 
-//     aDataset.mChannel = 11;
-//     aDataset.mComponents.mIsChannelPresent = true;
+    otDatasetSetActive(myOtInstance, &aDataset); // cli command: dataset commit active
+}
 
-//     aDataset.mChannelMask = (otChannelMask)0x7fff800; // enables all radio channels (11–26)
-//     aDataset.mComponents.mIsChannelMaskPresent = true;
+static void thread_network_start(void)
+{
+    otInstance *myOtInstance = esp_openthread_get_instance();
 
-//     aDataset.mPanId = (otPanId)MY_THREAD_PANID;
-//     aDataset.mComponents.mIsPanIdPresent = true;
+    /* Start the Thread network interface (cli command: ifconfig up) */
+    otIp6SetEnabled(myOtInstance, true);
 
-//     uint8_t extPanId[OT_EXT_PAN_ID_SIZE] = MY_THREAD_EXT_PANID;
-//     memcpy(aDataset.mExtendedPanId.m8, extPanId, sizeof(aDataset.mExtendedPanId));
-//     aDataset.mComponents.mIsExtendedPanIdPresent = true;
-
-//     uint8_t key[OT_NETWORK_KEY_SIZE] = MY_THREAD_NETWORK_KEY;
-//     memcpy(aDataset.mNetworkKey.m8, key, sizeof(aDataset.mNetworkKey));
-//     aDataset.mComponents.mIsNetworkKeyPresent = true;
-
-//     static char aNetworkName[] = MY_THREAD_NETWORK_NAME;
-//     size_t length = strlen(aNetworkName);
-//     assert(length <= OT_NETWORK_NAME_MAX_SIZE);
-//     memcpy(aDataset.mNetworkName.m8, aNetworkName, length);
-//     aDataset.mComponents.mIsNetworkNamePresent = true;
-
-//     uint8_t meshLocalPrefix[OT_MESH_LOCAL_PREFIX_SIZE] = MY_MESH_LOCAL_PREFIX;
-//     memcpy(aDataset.mMeshLocalPrefix.m8, meshLocalPrefix, sizeof(aDataset.mMeshLocalPrefix));
-//     aDataset.mComponents.mIsMeshLocalPrefixPresent = true;
-
-//     otDatasetSetActive(myOtInstance, &aDataset); // cli command: dataset commit active
-// }
-
-// static void thread_network_start(void)
-// {
-//     otInstance *myOtInstance = esp_openthread_get_instance();
-
-//     /* Start the Thread network interface (cli command: ifconfig up) */
-//     otIp6SetEnabled(myOtInstance, true);
-
-//     /* Start the Thread stack (cli command: thread start) */
-//     otThreadSetEnabled(myOtInstance, true);
-// }
+    /* Start the Thread stack (cli command: thread start) */
+    otThreadSetEnabled(myOtInstance, true);
+}
 
 static void thread_instance_init(void)
 {
@@ -121,6 +96,8 @@ static void thread_instance_init(void)
      * Set up the callback  to start transferring CoAP messages
      */
     otSetStateChangedCallback(esp_openthread_get_instance(), coapClientStartCallback, NULL);
+
+    config_joiner_dataset();
 
 #if CONFIG_OPENTHREAD_LOG_LEVEL_DYNAMIC
     // The OpenThread log level directly matches ESP log level
@@ -160,4 +137,5 @@ void app_main(void)
 
     thread_instance_init();
     xTaskCreate(thread_process, "thread_process", 10240, xTaskGetCurrentTaskHandle(), 5, NULL);
+    //launch_adc_process();
 }
