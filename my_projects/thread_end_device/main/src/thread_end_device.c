@@ -137,5 +137,5 @@ void app_main(void)
 
     thread_instance_init();
     xTaskCreate(thread_process, "thread_process", 10240, xTaskGetCurrentTaskHandle(), 5, NULL);
-    //launch_adc_process();
+    launch_adc_process();
 }

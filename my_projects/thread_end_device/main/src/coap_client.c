@@ -6,6 +6,7 @@
 #include "misc.h"
 #include "esp_log.h"
 #include "sensors.h"
+#include "cJSON.h"
 
 typedef struct
 {
@@ -19,7 +20,7 @@ typedef struct
 
 static void init_sensor_data(SensorData *data)
 {
-    strcpy(data->sensor_id, "ffffffff-ffff-ffff-ffff-ffffffffffff");
+    strcpy(data->sensor_id, "1dfab928-8a67-41f2-81cf-118e7c1fa7a4");
     data->temperature = -1;
     data->humidity = -1;
     data->pm25 = -1;
@@ -41,7 +42,6 @@ static void build_json_payload(char *buffer, size_t buffer_size, const SensorDat
         data->sensor_id, data->temperature, data->humidity, data->pm25, data->tvoc, data->co2);
 }
 
-/**@brief Function for sending data with CoAP */
 static void coap_send_data(const SensorData *sensor_data)
 {
     otError       error = OT_ERROR_NONE;
@@ -109,13 +109,10 @@ static void coap_process(void *aContext)
         // TODO: get real data from sensors
         
         coap_send_data(&data);
-        vTaskDelay(3000 / portTICK_PERIOD_MS);
+        vTaskDelay(6000 / portTICK_PERIOD_MS);
     }
 }
 
-/**
- * Init CoAP on client device
- */
 static void coap_init(uint16_t port)
 {
     otError error = OT_ERROR_NONE;
@@ -129,7 +126,7 @@ static void coap_init(uint16_t port)
 }
 
 /**
- * Callback function to start CoAP client
+ * @brief Callback function to start CoAP client
  */
 void coapClientStartCallback(otChangedFlags changed_flags, void* ctx)
 {
