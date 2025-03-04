@@ -148,3 +148,6 @@
 [submodule "components/bt/esp_ble_mesh/lib/lib"]
 	path = components/bt/esp_ble_mesh/lib/lib
 	url = ../../espressif/esp-ble-mesh-lib.git
+[submodule "my_projects/bme_i2c_test/components/bme68x_lib"]
+	path = my_projects/bme_i2c_test/components/bme68x_lib
+	url = https://github.com/mauriciobarroso/bme68x_lib

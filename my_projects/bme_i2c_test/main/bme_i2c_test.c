@@ -2,66 +2,51 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <esp_system.h>
-#include <bme680.h>
 #include <string.h>
+#include <bme68x_lib.h>
+#include <esp_log.h>
 
-#define I2C_PORT 0
-#define BME680_I2C_ADDR 0x77 // 0x77 for BME680, 0x76 for BME688
-#define I2C_MASTER_SDA GPIO_NUM_10
-#define I2C_MASTER_SCL GPIO_NUM_11
+#define I2C_PORT        I2C_NUM_0
+#define SDA_PIN         GPIO_NUM_10
+#define SCL_PIN         GPIO_NUM_11
 
-void bme680_test(void *pvParameters)
-{
-    bme680_t sensor;
-    memset(&sensor, 0, sizeof(bme680_t));
+const static char * TAG = "bme_test";
 
-    ESP_ERROR_CHECK(bme680_init_desc(&sensor, BME680_I2C_ADDR, I2C_PORT, I2C_MASTER_SDA, I2C_MASTER_SCL));
+void bme68x_test(void *pvParameters) {
+    bme68x_lib_t sensor;
 
-    // init the sensor
-    ESP_ERROR_CHECK(bme680_init_sensor(&sensor));
+    bme68x_lib_init(&sensor, NULL, BME68X_I2C_INTF);
 
-    // Changes the oversampling rates to 4x oversampling for temperature
-    // and 2x oversampling for humidity. Pressure measurement is skipped.
-    //bme680_set_oversampling_rates(&sensor, BME680_OSR_4X, BME680_OSR_NONE, BME680_OSR_2X);
+    /* Set temperature, pressure and humidity oversampling (NONE to 16X)
+    Higher oversampling means more data points are averaged per reading, increases measurement time */
+    bme68x_lib_set_tph(&sensor, BME68X_OS_8X, BME68X_OS_8X, BME68X_OS_8X);
 
-    // Change the IIR filter size for temperature and pressure to 7.
-    //bme680_set_filter_size(&sensor, BME680_IIR_SIZE_3);
+    /* IIR filter coefficient, ONLY for temp and pressure
+    Higher filter coefficient means less sensitive to changes, but responseds slow to changes */
+    bme68x_lib_set_filter(&sensor, BME68X_FILTER_SIZE_7);
 
-    // Change the heater profile 0 to 200 degree Celsius for 100 ms.
-    bme680_set_heater_profile(&sensor, 0, 200, 100);
-    bme680_use_heater_profile(&sensor, 0);
+    /* Set heater profile (°C, ms), for burning VOCs */
+    bme68x_lib_set_heater_prof_for(&sensor, 300, 100);
 
-    // Set ambient temperature to 10 degree Celsius
-    bme680_set_ambient_temperature(&sensor, 10);
+    /* Set ambient temperature for VOC measurements (use room temperature) */
+    bme68x_lib_set_ambient_temp(&sensor, 25);
 
-    // as long as sensor configuration isn't changed, duration is constant
-    uint32_t duration;
-    bme680_get_measurement_duration(&sensor, &duration);
+    while (1) {
+        bme68x_lib_set_op_mode(&sensor, BME68X_FORCED_MODE);
 
-    TickType_t last_wakeup = xTaskGetTickCount();
+        // Wait for measurement completion
+        vTaskDelay(pdMS_TO_TICKS(1000));
 
-    bme680_values_float_t values;
-    while (1)
-    {
-        // trigger the sensor to start one TPHG measurement cycle
-        if (bme680_force_measurement(&sensor) == ESP_OK)
-        {
-            // passive waiting until measurement results are available
-            vTaskDelay(duration);
-
-            // get the results and do something with them
-            if (bme680_get_results_float(&sensor, &values) == ESP_OK)
-                printf("BME680 Sensor: %.2f °C, %.2f %%, %.2f hPa, %.2f Ohm\n",
-                        values.temperature, values.humidity, values.pressure, values.gas_resistance);
+        // Fetch and get data
+        if (bme68x_lib_fetch_data(&sensor) > 0) {
+            bme68x_data_t data;
+            bme68x_lib_get_data(&sensor, &data);
+            printf("BME680 Sensor: %.2f °C, %.2f %%, %.2f hPa, %.2f Ohm\n",
+                   data.temperature, data.humidity, data.pressure / 100.0, data.gas_resistance);
         }
-        vTaskDelay(pdMS_TO_TICKS(2000));
     }
 }
 
-void app_main()
-{
-    ESP_ERROR_CHECK(i2cdev_init());
-    xTaskCreate(bme680_test, "bme680_test", 8192, xTaskGetCurrentTaskHandle(), 5, NULL);
+void app_main() {
+    xTaskCreate(bme68x_test, "bme68x_test", 4096, NULL, 5, NULL);
 }
-
-
