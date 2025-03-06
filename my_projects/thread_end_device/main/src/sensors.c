@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 
 #include "sensors.h"
 #include "misc.h"
@@ -10,11 +11,24 @@
 #include "esp_adc/adc_oneshot.h"
 #include "esp_adc/adc_cali.h"
 #include "esp_adc/adc_cali_scheme.h"
-#include "driver/i2c_master.h"
+#include "driver/uart.h"
+#include "driver/gpio.h"
 
 #define ADC_CHANNEL  ADC_CHANNEL_0
 #define ADC_ATTEN_DB ADC_ATTEN_DB_12
 #define ADC_UNIT_ID ADC_UNIT_1
+
+#define SENSOR_RX_PIN GPIO_NUM_4  // MH-Z19C RX (ESP32 TX)
+#define SENSOR_TX_PIN GPIO_NUM_5   // MH-Z19C TX (ESP32 RX)
+#define UART_PORT UART_NUM_1
+#define MHZ19C_BUFFER_SIZE 9
+
+static bme68x_lib_t sensor;
+static const uint8_t mhz19c_read_co2_cmd[9] = {0xFF, 0x01, 0x86, 0x00, 0x00, 0x00, 0x00, 0x00, 0x79}; // MH-Z19C read CO2 concentration command
+
+/***************************************************************************
+ *                         PARTICULATE SENSOR
+ ***************************************************************************/
 
 static void adc_task(void *arg)
 {
@@ -53,7 +67,7 @@ static void adc_task(void *arg)
         adc_cali_raw_to_voltage(cali_handle, adc_raw_value, &adc_cali_value);
         if(time_to_print == 20) //print every 6 seconds,just to make sure the reading is stable
         {
-            printf("%d\n", adc_cali_value);
+            //printf("%d\n", adc_cali_value);
             time_to_print = 0;
         }
 
@@ -73,8 +87,190 @@ static void adc_task(void *arg)
 void launch_adc_process(void)
 {
     xTaskCreate(adc_task, "ADC Task", 8192, xTaskGetCurrentTaskHandle(), 3, NULL);
+    ESP_LOGI(ADC_DEBUG_TAG, "Launched ADC task");
 }
 
 // FUNCTION TO BE IMPLEMENTED: retrieve PM2.5 value
 
+/***************************************************************************
+ *                         BME680 SENSOR
+ ***************************************************************************/
 
+void bme68x_i2c_init(void) 
+{
+    bme68x_lib_init(&sensor, NULL, BME68X_I2C_INTF);
+
+    /* Set temperature, pressure and humidity oversampling (NONE to 16X)
+    Higher oversampling means more data points are averaged per reading, increases measurement time */
+    bme68x_lib_set_tph(&sensor, BME68X_OS_16X, BME68X_OS_NONE, BME68X_OS_16X);
+
+    /* IIR filter coefficient, ONLY for temp and pressure
+    Higher filter coefficient means less sensitive to changes, but responseds slow to changes */
+    bme68x_lib_set_filter(&sensor, BME68X_FILTER_SIZE_63);
+
+    /* Set heater profile (°C, ms), for burning VOCs */
+    bme68x_lib_set_heater_prof_for(&sensor, 300, 200);
+
+    /* Set ambient temperature for VOC measurements (use room temperature) */
+    bme68x_lib_set_ambient_temp(&sensor, 25);
+}
+
+void bme68x_data_retrieve(bme68x_data_t *data)
+{
+    bme68x_lib_set_op_mode(&sensor, BME68X_FORCED_MODE);
+
+    // Fetch and get data
+    if (bme68x_lib_fetch_data(&sensor) > 0)
+    {
+        bme68x_lib_get_data(&sensor, data);
+        return;
+    }
+    printf("Failed to retrieve BME680 data\n");
+}
+
+static float water_sat_density(float temp) 
+{
+    return (6.112 * 100 * exp((17.62 * temp) / (243.12 + temp))) / (461.52 * (temp + 273.15));
+}
+
+float bme68x_get_iaq(float gas_resistance, float humidity, float temp) 
+{
+    // Static variable to store the gas ceiling
+    static float gas_ceil = 0;
+
+    // Calculate the maximum absolute water density
+    float rho_max = water_sat_density(temp);
+    float hum_abs = humidity * 10 * rho_max;
+
+    // Apply humidity compensation to gas resistance
+    float comp_gas = gas_resistance * exp(0.03 * hum_abs);
+
+    // Update the gas ceiling to the new highest value if needed
+    if (comp_gas > gas_ceil) {
+        gas_ceil = comp_gas;
+    }
+
+    // Calculate the IAQ score as a percentage
+    float iaq = fminf(powf(comp_gas / gas_ceil, 2), 1.0) * 100.0;
+
+    return iaq;
+}
+
+void bme68x_test_task(void *arg)
+{
+    while (1) 
+    {
+        bme68x_lib_set_op_mode(&sensor, BME68X_FORCED_MODE);
+
+        vTaskDelay(pdMS_TO_TICKS(3000));
+
+        // Fetch and get data
+        if (bme68x_lib_fetch_data(&sensor) > 0) 
+        {
+            bme68x_data_t data;
+            bme68x_lib_get_data(&sensor, &data);
+            printf("BME680 Sensor: %.2f °C, %.2f %%, %.2f Ohm, %.2f iaq\n",
+                   data.temperature, data.humidity, data.gas_resistance, bme68x_get_iaq(data.gas_resistance, data.humidity, data.temperature));
+        }
+    }
+}
+
+void launch_bme68x_test_task(void)
+{
+    xTaskCreate(bme68x_test_task, "bme68x_test_task", 8192, xTaskGetCurrentTaskHandle(), 3, NULL);
+}
+
+/***************************************************************************
+ *                           CO2 SENSOR
+ ***************************************************************************/
+
+void mhz19c_uart_init(void)
+{
+    const uart_config_t uart_config = {
+        .baud_rate = 9600,  // For MH-Z19C
+        .data_bits = UART_DATA_8_BITS,
+        .parity = UART_PARITY_DISABLE,
+        .stop_bits = UART_STOP_BITS_1,
+        .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
+        .source_clk = UART_SCLK_DEFAULT,
+    };
+
+    uart_driver_install(UART_PORT, 1024 * 2, 0, 0, NULL, 0);
+    uart_param_config(UART_PORT, &uart_config);
+    uart_set_pin(UART_PORT, SENSOR_RX_PIN, SENSOR_TX_PIN, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
+}
+
+// Helper function to calculate checksum for mhz19c sensor
+static uint8_t mhz19c_calculate_checksum(uint8_t *packet)
+{
+    uint8_t checksum = 0;
+
+    for (int i = 1; i < 8; i++)
+    {
+        checksum += packet[i];  // Sum bytes 1 to 7
+    }
+
+    return (0xFF - checksum) + 1 ;  // Subtract from 0xFF then add 1
+}
+
+// Get one CO2 reading from MH-Z19C sensor
+int mhz19c_get_co2_concentration(void)
+{
+    // Send CO2 request
+    int txBytes = uart_write_bytes(UART_PORT, mhz19c_read_co2_cmd, sizeof(mhz19c_read_co2_cmd));
+    if (txBytes != sizeof(mhz19c_read_co2_cmd))
+    {
+        ESP_LOGE(CO2_DEBUG_TAG, "Failed to write CO2 request");
+        return -1;
+    }
+    //ESP_LOGI(CO2_DEBUG_TAG, "Sent CO2 request, wrote %d bytes", txBytes);
+
+    // Read and parse response
+    uint8_t response[MHZ19C_BUFFER_SIZE];
+    int rxBytes = uart_read_bytes(UART_PORT, response, sizeof(response), pdMS_TO_TICKS(200));
+    uart_flush(UART_PORT);
+    if (rxBytes <= 0)
+    {
+        ESP_LOGE(CO2_DEBUG_TAG, "Failed to read UART buffer or timeout occurred");
+        return -1;
+    }
+
+    //ESP_LOG_BUFFER_HEX(CO2_DEBUG_TAG, response, sizeof(response));
+
+    if (mhz19c_calculate_checksum(response) == response[8])
+    {
+        uint8_t high_byte = response[2];
+        uint8_t low_byte = response[3];
+        int co2_concentration = (high_byte << 8) | low_byte;
+
+        // Log CO2 data
+        // ESP_LOGI(CO2_DEBUG_TAG, "CO2 High Byte: 0x%02X (%d)", high_byte, high_byte);
+        // ESP_LOGI(CO2_DEBUG_TAG, "CO2 Low Byte: 0x%02X (%d)", low_byte, low_byte);
+        // ESP_LOGI(CO2_DEBUG_TAG, "CO2 Concentration: %d ppm", co2_concentration);
+        return co2_concentration;
+    }
+    else
+    {
+        ESP_LOGE(CO2_DEBUG_TAG, "Checksum error");
+        return -1;
+    }    
+}
+
+static void mhz19c_test_task(void *arg)
+{
+    while (1)
+    {
+        int co2_concentration = mhz19c_get_co2_concentration();
+        printf("CO2 Concentration: %d ppm\n", co2_concentration);
+        vTaskDelay(pdMS_TO_TICKS(3000));
+    }
+}
+
+void launch_mhz19c_test_task(void)
+{
+    xTaskCreate(mhz19c_test_task, "mhz19c_test_task", 2048, xTaskGetCurrentTaskHandle(), 3, NULL);
+}
+
+/***************************************************************************
+ *                              END OF FILE
+ ***************************************************************************/

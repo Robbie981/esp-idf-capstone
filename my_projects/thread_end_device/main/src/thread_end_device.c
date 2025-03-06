@@ -28,6 +28,7 @@
 #include "openthread/udp.h"
 #include "coap_client.h"
 #include "sensors.h"
+#include "misc.h"
 
 /*************DEFINES START*************/
 #define MY_THREAD_PANID 0x2222 // 16 bit
@@ -55,9 +56,11 @@ static void config_joiner_dataset(void)
 {
     otInstance *myOtInstance = esp_openthread_get_instance();
     otOperationalDataset aDataset;
-    
+    otError error = OT_ERROR_NONE;
+
     // Set dataset networkkey for joiner
-    ESP_ERROR_CHECK(otDatasetGetActive(myOtInstance, &aDataset));
+    error = otDatasetGetActive(myOtInstance, &aDataset);
+    ESP_LOGI(LOCAL_DEBUG_TAG, "dataset error: %d.", error);
     memset(&aDataset, 0, sizeof(otOperationalDataset));
 
     uint8_t key[OT_NETWORK_KEY_SIZE] = MY_THREAD_NETWORK_KEY;
@@ -137,5 +140,14 @@ void app_main(void)
 
     thread_instance_init();
     xTaskCreate(thread_process, "thread_process", 10240, xTaskGetCurrentTaskHandle(), 5, NULL);
+
     launch_adc_process();
+    
+    bme68x_i2c_init();
+    // launch_bme68x_test_task();
+
+    mhz19c_uart_init();
+
+    // vTaskDelay(pdMS_TO_TICKS(80000));
+    // thread_network_start();
 }

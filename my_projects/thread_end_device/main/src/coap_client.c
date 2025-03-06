@@ -8,6 +8,10 @@
 #include "sensors.h"
 #include "cJSON.h"
 
+#define ROBBIE_TEST_SENSOR_UUID "28ff852c-cc27-40db-b0ac-ad03118b41ad"
+#define PAC_SENSOR_UUID "" 
+#define E7_TEST_SENSOR_UUID "" 
+
 typedef struct
 {
     char sensor_id[40]; // UUID string
@@ -20,7 +24,7 @@ typedef struct
 
 static void init_sensor_data(SensorData *data)
 {
-    strcpy(data->sensor_id, "1dfab928-8a67-41f2-81cf-118e7c1fa7a4");
+    strcpy(data->sensor_id, ROBBIE_TEST_SENSOR_UUID);
     data->temperature = -1;
     data->humidity = -1;
     data->pm25 = -1;
@@ -48,7 +52,6 @@ static void coap_send_data(const SensorData *sensor_data)
     otMessage   * myMessage;
     otMessageInfo myMessageInfo;
     const char  * serverIpAddr = "fd00:0:fb01:1::1";
-    //const char * myTemperatureJson = "{\"temperature\": 23.32}";
     char jsonPayload[256];
     build_json_payload(jsonPayload, sizeof(jsonPayload), sensor_data);
 
@@ -104,12 +107,25 @@ static void coap_process(void *aContext)
 {
     while(true)
     {
-        SensorData data;
-        init_sensor_data(&data);
-        // TODO: get real data from sensors
+        SensorData end_device_data;
+        init_sensor_data(&end_device_data);
         
-        coap_send_data(&data);
-        vTaskDelay(6000 / portTICK_PERIOD_MS);
+        /* Get BME680 data (temp, humidity, tvoc (iaq))*/
+        bme68x_data_t bme_data;
+        bme68x_data_retrieve(&bme_data);
+        end_device_data.temperature = bme_data.temperature;
+        end_device_data.humidity = bme_data.humidity;
+        end_device_data.tvoc = bme68x_get_iaq(bme_data.gas_resistance, bme_data.humidity, bme_data.temperature);
+
+        /* Get CO2 reading */
+        int co2_concentration = mhz19c_get_co2_concentration();
+        end_device_data.co2 = co2_concentration;
+
+        /* Get PM2.5 reading */
+        
+        
+        coap_send_data(&end_device_data);
+        vTaskDelay(5000 / portTICK_PERIOD_MS);
     }
 }
 
