@@ -144,7 +144,10 @@ void app_main(void)
     launch_adc_process();
     
     bme68x_i2c_init();
-    // launch_bme68x_test_task();
+    vTaskDelay(pdMS_TO_TICKS(10000));
+    launch_bme68x_gas_refresh_task();
+    //vTaskDelay(pdMS_TO_TICKS(10000));
+    //launch_bme68x_test_task();
 
     mhz19c_uart_init();
 

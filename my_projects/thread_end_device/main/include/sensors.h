@@ -27,6 +27,8 @@ void bme68x_data_retrieve(bme68x_data_t *data);
  */
 float bme68x_get_iaq(float gas_resistance, float humidity, float temp);
 
+void launch_bme68x_gas_refresh_task(void);
+
 /**
  * @brief Initializes UART for the MH-Z19C sensor
  */

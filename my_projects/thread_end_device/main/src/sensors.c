@@ -13,6 +13,8 @@
 #include "esp_adc/adc_cali_scheme.h"
 #include "driver/uart.h"
 #include "driver/gpio.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 
 #define ADC_CHANNEL  ADC_CHANNEL_0
 #define ADC_ATTEN_DB ADC_ATTEN_DB_12
@@ -23,6 +25,8 @@
 #define UART_PORT UART_NUM_1
 #define MHZ19C_BUFFER_SIZE 9
 
+SemaphoreHandle_t bme_sensor_mutex;
+SemaphoreHandle_t gas_ceil_mutex;
 static bme68x_lib_t sensor;
 static const uint8_t mhz19c_read_co2_cmd[9] = {0xFF, 0x01, 0x86, 0x00, 0x00, 0x00, 0x00, 0x00, 0x79}; // MH-Z19C read CO2 concentration command
 
@@ -98,6 +102,9 @@ void launch_adc_process(void)
 
 void bme68x_i2c_init(void) 
 {
+    bme_sensor_mutex = xSemaphoreCreateMutex();
+    gas_ceil_mutex = xSemaphoreCreateMutex();
+    
     bme68x_lib_init(&sensor, NULL, BME68X_I2C_INTF);
 
     /* Set temperature, pressure and humidity oversampling (NONE to 16X)
@@ -117,15 +124,27 @@ void bme68x_i2c_init(void)
 
 void bme68x_data_retrieve(bme68x_data_t *data)
 {
-    bme68x_lib_set_op_mode(&sensor, BME68X_FORCED_MODE);
+    // Attempt to take the mutex before accessing the sensor data
+    if (xSemaphoreTake(bme_sensor_mutex, portMAX_DELAY) == pdTRUE) {
+        
+        // Acquire the sensor in forced mode
+        bme68x_lib_set_op_mode(&sensor, BME68X_FORCED_MODE);
 
-    // Fetch and get data
-    if (bme68x_lib_fetch_data(&sensor) > 0)
-    {
-        bme68x_lib_get_data(&sensor, data);
-        return;
+        // Fetch and get the data from the sensor
+        if (bme68x_lib_fetch_data(&sensor) > 0)
+        {
+            bme68x_lib_get_data(&sensor, data);
+        }
+        else
+        {
+            printf("Failed to retrieve BME680 data\n");
+        }
+        xSemaphoreGive(bme_sensor_mutex);
     }
-    printf("Failed to retrieve BME680 data\n");
+    else
+    {
+        printf("Failed to acquire mutex for sensor\n");
+    }
 }
 
 static float water_sat_density(float temp) 
@@ -135,8 +154,9 @@ static float water_sat_density(float temp)
 
 float bme68x_get_iaq(float gas_resistance, float humidity, float temp) 
 {
-    // Static variable to store the gas ceiling
-    static float gas_ceil = 0;
+    static float gas_ceil = 0; // Static variable to store the gas ceiling
+    static int burn_in_counter = 0;
+    float iaq = -1;
 
     // Calculate the maximum absolute water density
     float rho_max = water_sat_density(temp);
@@ -145,39 +165,63 @@ float bme68x_get_iaq(float gas_resistance, float humidity, float temp)
     // Apply humidity compensation to gas resistance
     float comp_gas = gas_resistance * exp(0.03 * hum_abs);
 
-    // Update the gas ceiling to the new highest value if needed
-    if (comp_gas > gas_ceil) {
-        gas_ceil = comp_gas;
-    }
-
     // Calculate the IAQ score as a percentage
-    float iaq = fminf(powf(comp_gas / gas_ceil, 2), 1.0) * 100.0;
+    if (burn_in_counter < 25) 
+    {
+        burn_in_counter++;
+    }
+    else 
+    {
+        // Update the gas ceiling to the new highest value if needed
+        if (comp_gas > gas_ceil) 
+        {
+            if (xSemaphoreTake(gas_ceil_mutex, portMAX_DELAY) == pdTRUE)
+            {
+                gas_ceil = comp_gas;
+                xSemaphoreGive(gas_ceil_mutex);
+            }
+        }
+        iaq = fminf(powf(comp_gas / gas_ceil, 2), 1.0) * 100.0;
+    }
 
     return iaq;
 }
 
-void bme68x_test_task(void *arg)
+static void bme68x_test_task(void *arg)
 {
-    while (1) 
+    while (1)
     {
-        bme68x_lib_set_op_mode(&sensor, BME68X_FORCED_MODE);
+        bme68x_data_t data;
+        bme68x_data_retrieve(&data);
+        
+        printf("BME680 Sensor: %.2f °C, %.2f %%, %.2f Ohm, %.2f iaq\n",
+                data.temperature, data.humidity, data.gas_resistance, 
+                bme68x_get_iaq(data.gas_resistance, data.humidity, data.temperature));
 
-        vTaskDelay(pdMS_TO_TICKS(3000));
-
-        // Fetch and get data
-        if (bme68x_lib_fetch_data(&sensor) > 0) 
-        {
-            bme68x_data_t data;
-            bme68x_lib_get_data(&sensor, &data);
-            printf("BME680 Sensor: %.2f °C, %.2f %%, %.2f Ohm, %.2f iaq\n",
-                   data.temperature, data.humidity, data.gas_resistance, bme68x_get_iaq(data.gas_resistance, data.humidity, data.temperature));
-        }
+        vTaskDelay(pdMS_TO_TICKS(10000));
     }
 }
 
 void launch_bme68x_test_task(void)
 {
     xTaskCreate(bme68x_test_task, "bme68x_test_task", 8192, xTaskGetCurrentTaskHandle(), 3, NULL);
+}
+
+static void bme68x_gas_refresh_task(void *arg)
+{
+    while (1)
+    {
+        bme68x_data_t data;
+        bme68x_data_retrieve(&data);
+        bme68x_get_iaq(data.gas_resistance, data.humidity, data.temperature);
+
+        vTaskDelay(pdMS_TO_TICKS(1500));
+    }
+}
+
+void launch_bme68x_gas_refresh_task(void)
+{
+    xTaskCreate(bme68x_gas_refresh_task, "bme68x_gas_refresh_task", 8192, xTaskGetCurrentTaskHandle(), 3, NULL);
 }
 
 /***************************************************************************
