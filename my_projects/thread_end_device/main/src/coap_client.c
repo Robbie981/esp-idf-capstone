@@ -122,10 +122,10 @@ static void coap_process(void *aContext)
         end_device_data.co2 = co2_concentration;
 
         /* Get PM2.5 reading */
-        
+        end_device_data.pm25 = get_pm25_reading();
         
         coap_send_data(&end_device_data);
-        vTaskDelay(5000 / portTICK_PERIOD_MS);
+        vTaskDelay(6000 / portTICK_PERIOD_MS);
     }
 }
 

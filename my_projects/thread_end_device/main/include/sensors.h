@@ -2,10 +2,14 @@
 
 #include "bme68x_lib.h"
 
+void adc_init(void);
+
 /**
  * @brief Starts the ADC reading process for PM2.5 sensor
  */
-void launch_adc_process(void);
+void launch_pm25_test_task(void);
+
+float get_pm25_reading(void);
 
 /**
  * @brief Initializes the BME680 sensor

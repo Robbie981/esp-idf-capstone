@@ -141,16 +141,18 @@ void app_main(void)
     thread_instance_init();
     xTaskCreate(thread_process, "thread_process", 10240, xTaskGetCurrentTaskHandle(), 5, NULL);
 
-    launch_adc_process();
+    adc_init();
+    // vTaskDelay(pdMS_TO_TICKS(5000));
+    // launch_pm25_test_task();
     
     bme68x_i2c_init();
     vTaskDelay(pdMS_TO_TICKS(10000));
     launch_bme68x_gas_refresh_task();
-    //vTaskDelay(pdMS_TO_TICKS(10000));
-    //launch_bme68x_test_task();
+    // vTaskDelay(pdMS_TO_TICKS(10000));
+    // launch_bme68x_test_task();
 
     mhz19c_uart_init();
 
-    // vTaskDelay(pdMS_TO_TICKS(80000));
-    // thread_network_start();
+    vTaskDelay(pdMS_TO_TICKS(25000));
+    thread_network_start();
 }

@@ -20,13 +20,22 @@
 #define ADC_ATTEN_DB ADC_ATTEN_DB_12
 #define ADC_UNIT_ID ADC_UNIT_1
 
+#define PM25_ADC_READINGS 100
+#define K_SCATTER 1.0      // Scaling factor for light intensity conversion
+#define A_PARTICLE 1000.0  // Empirical coefficient for particle count
+#define B_EXPONENT 1.5     // Empirical exponent for non-linearity
+#define PARTICLE_RADIUS 1.0e-6  // in meters (1 µm)
+#define PARTICLE_DENSITY 1.65e3  // in kg/m³ (density of dust particles)
+
 #define SENSOR_RX_PIN GPIO_NUM_4  // MH-Z19C RX (ESP32 TX)
 #define SENSOR_TX_PIN GPIO_NUM_5   // MH-Z19C TX (ESP32 RX)
 #define UART_PORT UART_NUM_1
 #define MHZ19C_BUFFER_SIZE 9
 
-SemaphoreHandle_t bme_sensor_mutex;
-SemaphoreHandle_t gas_ceil_mutex;
+static SemaphoreHandle_t bme_sensor_mutex;
+static SemaphoreHandle_t gas_ceil_mutex;
+static adc_oneshot_unit_handle_t adc_handle = NULL;
+static adc_cali_handle_t adc_cali_handle = NULL;
 static bme68x_lib_t sensor;
 static const uint8_t mhz19c_read_co2_cmd[9] = {0xFF, 0x01, 0x86, 0x00, 0x00, 0x00, 0x00, 0x00, 0x79}; // MH-Z19C read CO2 concentration command
 
@@ -34,64 +43,86 @@ static const uint8_t mhz19c_read_co2_cmd[9] = {0xFF, 0x01, 0x86, 0x00, 0x00, 0x0
  *                         PARTICULATE SENSOR
  ***************************************************************************/
 
-static void adc_task(void *arg)
-{
-    int adc_raw_value, adc_cali_value;
-    
+void adc_init(void)
+{   
     // ADC INIT
-    adc_oneshot_unit_handle_t handle;
     adc_oneshot_unit_init_cfg_t init_config1 = {
         .unit_id = ADC_UNIT_ID,
     };
-    ESP_ERROR_CHECK(adc_oneshot_new_unit(&init_config1, &handle));
+    ESP_ERROR_CHECK(adc_oneshot_new_unit(&init_config1, &adc_handle));
 
     adc_oneshot_chan_cfg_t config = {
         .bitwidth = ADC_BITWIDTH_DEFAULT,
         .atten = ADC_ATTEN_DB,
     };
 
-    ESP_ERROR_CHECK(adc_oneshot_config_channel(handle, ADC_CHANNEL, &config)); // ADC1_CH0
+    ESP_ERROR_CHECK(adc_oneshot_config_channel(adc_handle, ADC_CHANNEL, &config)); // ADC1_CH0
     
     //ADC CALIBRATION
-    adc_cali_handle_t cali_handle = NULL;
     adc_cali_curve_fitting_config_t cali_config = {
         .unit_id = ADC_UNIT_ID,
         .chan = ADC_CHANNEL,
         .atten = ADC_ATTEN_DB,
         .bitwidth = ADC_BITWIDTH_DEFAULT,
     };
-
-    ESP_ERROR_CHECK(adc_cali_create_scheme_curve_fitting(&cali_config, &cali_handle));
-
-    //Read raw ADC value then convert to mV
-    int time_to_print = 0;
-    while(1)
-    {
-        ESP_ERROR_CHECK(adc_oneshot_read(handle, ADC_CHANNEL, &adc_raw_value));
-        adc_cali_raw_to_voltage(cali_handle, adc_raw_value, &adc_cali_value);
-        if(time_to_print == 20) //print every 6 seconds,just to make sure the reading is stable
-        {
-            //printf("%d\n", adc_cali_value);
-            time_to_print = 0;
-        }
-
-        /* TODO: Do something with adc_cali_value
-            - Collect many vallues over a time period
-            - Calculate PM2.5 
-            - Store in queue?
-        */
-        time_to_print++;
-        vTaskDelay(pdMS_TO_TICKS(300));
-    }
-    adc_oneshot_del_unit(handle);
-    adc_cali_delete_scheme_curve_fitting(cali_handle);
-    vTaskDelete(NULL);
+    ESP_ERROR_CHECK(adc_cali_create_scheme_curve_fitting(&cali_config, &adc_cali_handle));
 }
 
-void launch_adc_process(void)
+float get_pm25_reading(void)
 {
-    xTaskCreate(adc_task, "ADC Task", 8192, xTaskGetCurrentTaskHandle(), 3, NULL);
-    ESP_LOGI(ADC_DEBUG_TAG, "Launched ADC task");
+    int adc_raw_value, adc_cali_value;
+    double adc_cal_values[PM25_ADC_READINGS];
+
+    // Fill the buffer with ADC readings
+    for (int i = 0; i < PM25_ADC_READINGS; i++)
+    {
+        ESP_ERROR_CHECK(adc_oneshot_read(adc_handle, ADC_CHANNEL, &adc_raw_value));
+        ESP_ERROR_CHECK(adc_cali_raw_to_voltage(adc_cali_handle, adc_raw_value, &adc_cali_value));
+
+        adc_cal_values[i] = adc_cali_value;
+        vTaskDelay(pdMS_TO_TICKS(150)); // Delay between readings
+    }
+
+    for (int i = 0; i < PM25_ADC_READINGS; i++)
+    {
+        printf("%.f ", adc_cal_values[i]); // Print with 3 decimal places
+        if ((i + 1) % 10 == 0) // Newline every 10 readings
+        {
+            printf("\n");
+        }
+    }
+    printf("\n\n"); // Final newline
+    
+
+    //  // Process the readings to calculate PM2.5 concentration
+    //  double total_mass_concentration = 0.0;
+
+    //  for (int i = 0; i < PM25_ADC_READINGS; i++)
+    //  {
+    //      double intensity = K_SCATTER * adc_cal_values_volts[i];
+    //      double particle_count = A_PARTICLE * pow(intensity, B_EXPONENT);
+    //      double particle_volume = (4.0 / 3.0) * M_PI * pow(PARTICLE_RADIUS, 3);
+    //      double mass_per_particle = particle_volume * PARTICLE_DENSITY * 1e9; // Convert kg to µg
+    //      total_mass_concentration += particle_count * mass_per_particle;
+    //  }
+
+    //  return (float) (total_mass_concentration / PM25_ADC_READINGS); // Return average PM2.5 concentration (µg/m³)
+    return 0;
+}
+
+static void pm25_test_task(void *arg)
+{
+    while (1)
+    {
+        get_pm25_reading();
+        //ESP_LOGI(ADC_DEBUG_TAG, "PM2.5 Concentration: %.2f µg/m³", get_pm25_reading());
+        vTaskDelay(pdMS_TO_TICKS(500));
+    }
+}
+
+void launch_pm25_test_task(void)
+{
+    xTaskCreate(pm25_test_task, "pm25_task", 8192, xTaskGetCurrentTaskHandle(), 3, NULL);
 }
 
 // FUNCTION TO BE IMPLEMENTED: retrieve PM2.5 value
