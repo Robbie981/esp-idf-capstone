@@ -8,7 +8,7 @@
 #include "sensors.h"
 #include "cJSON.h"
 
-#define ROBBIE_TEST_SENSOR_UUID "28ff852c-cc27-40db-b0ac-ad03118b41ad"
+#define ROBBIE_TEST_SENSOR_UUID "187e906e-017c-4ced-a437-b70e6f82da14"
 #define PAC_SENSOR_UUID "" 
 #define E7_TEST_SENSOR_UUID "" 
 
@@ -122,10 +122,10 @@ static void coap_process(void *aContext)
         end_device_data.co2 = co2_concentration;
 
         /* Get PM2.5 reading */
-        end_device_data.pm25 = get_pm25_reading();
+        end_device_data.pm25 = (float) get_pm25_reading();
         
         coap_send_data(&end_device_data);
-        vTaskDelay(6000 / portTICK_PERIOD_MS);
+        vTaskDelay(3000 / portTICK_PERIOD_MS);
     }
 }
 

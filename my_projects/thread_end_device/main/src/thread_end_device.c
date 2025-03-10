@@ -142,8 +142,8 @@ void app_main(void)
     xTaskCreate(thread_process, "thread_process", 10240, xTaskGetCurrentTaskHandle(), 5, NULL);
 
     adc_init();
-    // vTaskDelay(pdMS_TO_TICKS(5000));
-    // launch_pm25_test_task();
+    vTaskDelay(pdMS_TO_TICKS(5000));
+    //launch_pm25_test_task();
     
     bme68x_i2c_init();
     vTaskDelay(pdMS_TO_TICKS(10000));
@@ -153,6 +153,6 @@ void app_main(void)
 
     mhz19c_uart_init();
 
-    vTaskDelay(pdMS_TO_TICKS(25000));
+    vTaskDelay(pdMS_TO_TICKS(20000));
     thread_network_start();
 }

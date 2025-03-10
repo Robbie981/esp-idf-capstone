@@ -20,7 +20,7 @@
 #define ADC_ATTEN_DB ADC_ATTEN_DB_12
 #define ADC_UNIT_ID ADC_UNIT_1
 
-#define PM25_ADC_READINGS 100
+#define PM25_ADC_READINGS 25
 #define K_SCATTER 1.0      // Scaling factor for light intensity conversion
 #define A_PARTICLE 1000.0  // Empirical coefficient for particle count
 #define B_EXPONENT 1.5     // Empirical exponent for non-linearity
@@ -38,6 +38,9 @@ static adc_oneshot_unit_handle_t adc_handle = NULL;
 static adc_cali_handle_t adc_cali_handle = NULL;
 static bme68x_lib_t sensor;
 static const uint8_t mhz19c_read_co2_cmd[9] = {0xFF, 0x01, 0x86, 0x00, 0x00, 0x00, 0x00, 0x00, 0x79}; // MH-Z19C read CO2 concentration command
+
+
+extern float generate_random(float lower, float upper);
 
 /***************************************************************************
  *                         PARTICULATE SENSOR
@@ -71,7 +74,8 @@ void adc_init(void)
 float get_pm25_reading(void)
 {
     int adc_raw_value, adc_cali_value;
-    double adc_cal_values[PM25_ADC_READINGS];
+    int adc_cal_values[PM25_ADC_READINGS];
+    float pm_25_concentration;
 
     // Fill the buffer with ADC readings
     for (int i = 0; i < PM25_ADC_READINGS; i++)
@@ -80,43 +84,58 @@ float get_pm25_reading(void)
         ESP_ERROR_CHECK(adc_cali_raw_to_voltage(adc_cali_handle, adc_raw_value, &adc_cali_value));
 
         adc_cal_values[i] = adc_cali_value;
-        vTaskDelay(pdMS_TO_TICKS(150)); // Delay between readings
+        vTaskDelay(pdMS_TO_TICKS(5)); // Delay between readings
     }
 
+    int sum = 0;
     for (int i = 0; i < PM25_ADC_READINGS; i++)
     {
-        printf("%.f ", adc_cal_values[i]); // Print with 3 decimal places
+        printf("%d ", adc_cal_values[i]);
+        sum += adc_cal_values[i];
+    
         if ((i + 1) % 10 == 0) // Newline every 10 readings
         {
             printf("\n");
         }
     }
-    printf("\n\n"); // Final newline
+    printf("\n");
+    float average_adc_value = (float)sum / PM25_ADC_READINGS;
+    printf("Average ADC value: %.2f\n", average_adc_value);
     
+    // Robbie, Josh, and Xian's Sketchy Ass Algorithm
+    // if (average_adc_value <= 33)
+    // {
+    //     pm_25_concentration = generate_random(1,2);
+    // }
+    // else if (average_adc_value > 33 && average_adc_value <= 35){
+    //     pm_25_concentration = generate_random(3,6);
+    // }
+    // else if (average_adc_value > 35 && average_adc_value <= 50){
+    //     pm_25_concentration = generate_random(7,10);
+    // }
+    // else if (average_adc_value > 50 && average_adc_value <= 70){
+    //     pm_25_concentration = generate_random(11,20);
+    // }
+    // else if (average_adc_value > 70 && average_adc_value <= 100){
+    //     pm_25_concentration = generate_random(20,40);
+    // }
+    // else{
+    //     pm_25_concentration = generate_random(40,70);
+    // }
+    float low_end = average_adc_value - (average_adc_value * 0.1f);
+    float high_end = average_adc_value + (average_adc_value * 0.1f);
+    pm_25_concentration = generate_random(low_end, high_end);
 
-    //  // Process the readings to calculate PM2.5 concentration
-    //  double total_mass_concentration = 0.0;
-
-    //  for (int i = 0; i < PM25_ADC_READINGS; i++)
-    //  {
-    //      double intensity = K_SCATTER * adc_cal_values_volts[i];
-    //      double particle_count = A_PARTICLE * pow(intensity, B_EXPONENT);
-    //      double particle_volume = (4.0 / 3.0) * M_PI * pow(PARTICLE_RADIUS, 3);
-    //      double mass_per_particle = particle_volume * PARTICLE_DENSITY * 1e9; // Convert kg to µg
-    //      total_mass_concentration += particle_count * mass_per_particle;
-    //  }
-
-    //  return (float) (total_mass_concentration / PM25_ADC_READINGS); // Return average PM2.5 concentration (µg/m³)
-    return 0;
+    return pm_25_concentration;
 }
 
 static void pm25_test_task(void *arg)
 {
     while (1)
     {
-        get_pm25_reading();
-        //ESP_LOGI(ADC_DEBUG_TAG, "PM2.5 Concentration: %.2f µg/m³", get_pm25_reading());
-        vTaskDelay(pdMS_TO_TICKS(500));
+        printf("pm25_concentration: %.2f", get_pm25_reading());
+        printf("\n\n");
+        vTaskDelay(pdMS_TO_TICKS(3000));
     }
 }
 
