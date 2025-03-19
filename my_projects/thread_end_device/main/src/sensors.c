@@ -39,8 +39,11 @@ static adc_cali_handle_t adc_cali_handle = NULL;
 static bme68x_lib_t sensor;
 static const uint8_t mhz19c_read_co2_cmd[9] = {0xFF, 0x01, 0x86, 0x00, 0x00, 0x00, 0x00, 0x00, 0x79}; // MH-Z19C read CO2 concentration command
 
-
 extern float generate_random(float lower, float upper);
+extern void add_item(float item);
+extern int buffer_size();
+extern void print_buffer();
+extern float get_average();
 
 /***************************************************************************
  *                         PARTICULATE SENSOR
@@ -71,7 +74,7 @@ void adc_init(void)
     ESP_ERROR_CHECK(adc_cali_create_scheme_curve_fitting(&cali_config, &adc_cali_handle));
 }
 
-float get_pm25_reading(void)
+static void add_to_pm25_buffer(void)
 {
     int adc_raw_value, adc_cali_value;
     int adc_cal_values[PM25_ADC_READINGS];
@@ -103,30 +106,17 @@ float get_pm25_reading(void)
     printf("Average ADC value: %.2f\n", average_adc_value);
     
     // Robbie, Josh, and Xian's Sketchy Ass Algorithm
-    // if (average_adc_value <= 33)
-    // {
-    //     pm_25_concentration = generate_random(1,2);
-    // }
-    // else if (average_adc_value > 33 && average_adc_value <= 35){
-    //     pm_25_concentration = generate_random(3,6);
-    // }
-    // else if (average_adc_value > 35 && average_adc_value <= 50){
-    //     pm_25_concentration = generate_random(7,10);
-    // }
-    // else if (average_adc_value > 50 && average_adc_value <= 70){
-    //     pm_25_concentration = generate_random(11,20);
-    // }
-    // else if (average_adc_value > 70 && average_adc_value <= 100){
-    //     pm_25_concentration = generate_random(20,40);
-    // }
-    // else{
-    //     pm_25_concentration = generate_random(40,70);
-    // }
     float low_end = average_adc_value - (average_adc_value * 0.1f);
     float high_end = average_adc_value + (average_adc_value * 0.1f);
     pm_25_concentration = generate_random(low_end, high_end);
 
-    return pm_25_concentration;
+    add_item(pm_25_concentration);
+}
+
+float get_pm25_reading(void)
+{
+    add_to_pm25_buffer();
+    return get_average();
 }
 
 static void pm25_test_task(void *arg)

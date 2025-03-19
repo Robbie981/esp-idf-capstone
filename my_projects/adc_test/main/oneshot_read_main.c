@@ -55,7 +55,7 @@ void adc_task(void *arg)
         printf("%d", adc_cali_value);
         printf("\n");
 
-        vTaskDelay(pdMS_TO_TICKS(30));
+        vTaskDelay(pdMS_TO_TICKS(50));
     }
     adc_oneshot_del_unit(handle);
     adc_cali_delete_scheme_curve_fitting(cali_handle);
