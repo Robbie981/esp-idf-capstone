@@ -6,12 +6,6 @@
 #include <bme68x_lib.h>
 #include <esp_log.h>
 
-#define I2C_PORT        I2C_NUM_0
-#define SDA_PIN         GPIO_NUM_10
-#define SCL_PIN         GPIO_NUM_11
-
-const static char * TAG = "bme_test";
-
 void bme68x_test(void *pvParameters) {
     bme68x_lib_t sensor;
 
