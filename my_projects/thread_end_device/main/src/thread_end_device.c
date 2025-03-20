@@ -148,11 +148,13 @@ void app_main(void)
     bme68x_i2c_init();
     vTaskDelay(pdMS_TO_TICKS(10000));
     launch_bme68x_gas_refresh_task();
-    // vTaskDelay(pdMS_TO_TICKS(10000));
-    // launch_bme68x_test_task();
+    vTaskDelay(pdMS_TO_TICKS(10000));
+    launch_bme68x_test_task();
 
-    mhz19c_uart_init();
+    //mhz19c_uart_init();
+    //mhz19c_set_self_cali(false);
+    //launch_mhz19c_test_task();
 
-    vTaskDelay(pdMS_TO_TICKS(20000));
-    thread_network_start();
+    // vTaskDelay(pdMS_TO_TICKS(20000));
+    // thread_network_start();
 }

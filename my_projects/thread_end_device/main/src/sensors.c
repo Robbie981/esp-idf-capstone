@@ -38,6 +38,8 @@ static adc_oneshot_unit_handle_t adc_handle = NULL;
 static adc_cali_handle_t adc_cali_handle = NULL;
 static bme68x_lib_t sensor;
 static const uint8_t mhz19c_read_co2_cmd[9] = {0xFF, 0x01, 0x86, 0x00, 0x00, 0x00, 0x00, 0x00, 0x79}; // MH-Z19C read CO2 concentration command
+static const uint8_t mhz19c_self_cali_on_cmd[9] = {0xFF, 0x01, 0x79, 0xA0, 0x00, 0x00, 0x00, 0x00, 0x79};
+static const uint8_t mhz19c_self_cali_off_cmd[9] = {0xFF, 0x01, 0x79, 0x00, 0x00, 0x00, 0x00, 0x00, 0x79};
 
 extern float generate_random(float lower, float upper);
 extern void add_item(float item);
@@ -155,8 +157,7 @@ void bme68x_i2c_init(void)
     Higher filter coefficient means less sensitive to changes, but responseds slow to changes */
     bme68x_lib_set_filter(&sensor, BME68X_FILTER_SIZE_63);
 
-    /* Set heater profile (°C, ms), for burning VOCs */
-    bme68x_lib_set_heater_prof_for(&sensor, 300, 200);
+    bme68x_lib_set_heater_prof_for(&sensor, 100, 150);
 
     /* Set ambient temperature for VOC measurements (use room temperature) */
     bme68x_lib_set_ambient_temp(&sensor, 25);
@@ -174,6 +175,7 @@ void bme68x_data_retrieve(bme68x_data_t *data)
         if (bme68x_lib_fetch_data(&sensor) > 0)
         {
             bme68x_lib_get_data(&sensor, data);
+            data->temperature -= 2.5;  // Temp offset correction
         }
         else
         {
@@ -196,6 +198,7 @@ float bme68x_get_iaq(float gas_resistance, float humidity, float temp)
 {
     static float gas_ceil = 0; // Static variable to store the gas ceiling
     static int burn_in_counter = 0;
+    static int reset_counter = 0;
     float iaq = -1;
 
     // Calculate the maximum absolute water density
@@ -206,7 +209,7 @@ float bme68x_get_iaq(float gas_resistance, float humidity, float temp)
     float comp_gas = gas_resistance * exp(0.03 * hum_abs);
 
     // Calculate the IAQ score as a percentage
-    if (burn_in_counter < 25) 
+    if (burn_in_counter < 30) 
     {
         burn_in_counter++;
     }
@@ -222,6 +225,22 @@ float bme68x_get_iaq(float gas_resistance, float humidity, float temp)
             }
         }
         iaq = fminf(powf(comp_gas / gas_ceil, 2), 1.0) * 100.0;
+
+        if (reset_counter > 200)
+        {
+            // after a while the gas ceiling might be too high, we reset it to the current comp_gas value
+            if (xSemaphoreTake(gas_ceil_mutex, portMAX_DELAY) == pdTRUE)
+            {
+                gas_ceil = comp_gas * 1.1;
+                xSemaphoreGive(gas_ceil_mutex);
+            }
+            ESP_LOGE(BME_DEBUG_TAG, "Resetting gas ceiling");
+            reset_counter = 0;
+        }
+        else
+        {
+            reset_counter ++;
+        }
     }
 
     return iaq;
@@ -238,7 +257,7 @@ static void bme68x_test_task(void *arg)
                 data.temperature, data.humidity, data.gas_resistance, 
                 bme68x_get_iaq(data.gas_resistance, data.humidity, data.temperature));
 
-        vTaskDelay(pdMS_TO_TICKS(10000));
+        vTaskDelay(pdMS_TO_TICKS(5000));
     }
 }
 
@@ -340,13 +359,28 @@ int mhz19c_get_co2_concentration(void)
     }    
 }
 
+void mhz19c_set_self_cali(bool enable_self_cali)
+{
+    const uint8_t *cmd = enable_self_cali ? mhz19c_self_cali_on_cmd : mhz19c_self_cali_off_cmd;
+    int txBytes = uart_write_bytes(UART_PORT, cmd, sizeof(mhz19c_self_cali_on_cmd));
+    if (txBytes != sizeof(mhz19c_self_cali_on_cmd))
+    {
+        ESP_LOGE(CO2_DEBUG_TAG, "Failed to write self calibration command");
+    }
+    else
+    {
+        ESP_LOGI(CO2_DEBUG_TAG, "Setting self calibration, wrote %d bytes", txBytes);
+        ESP_LOG_BUFFER_HEX(CO2_DEBUG_TAG, cmd, sizeof(mhz19c_self_cali_on_cmd));  
+    }
+}
+
 static void mhz19c_test_task(void *arg)
 {
     while (1)
     {
         int co2_concentration = mhz19c_get_co2_concentration();
         printf("CO2 Concentration: %d ppm\n", co2_concentration);
-        vTaskDelay(pdMS_TO_TICKS(3000));
+        vTaskDelay(pdMS_TO_TICKS(3500));
     }
 }
 

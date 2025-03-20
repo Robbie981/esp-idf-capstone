@@ -43,6 +43,8 @@ void mhz19c_uart_init(void);
  */
 int mhz19c_get_co2_concentration(void);
 
+void mhz19c_set_self_cali(bool enable_self_cali);
+
 /**
  * @brief Starts a loop to read data from the MH-Z19C sensor
  */
