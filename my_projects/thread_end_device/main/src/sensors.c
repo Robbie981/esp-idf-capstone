@@ -27,8 +27,8 @@
 #define PARTICLE_RADIUS 1.0e-6  // in meters (1 µm)
 #define PARTICLE_DENSITY 1.65e3  // in kg/m³ (density of dust particles)
 
-#define SENSOR_RX_PIN GPIO_NUM_4  // MH-Z19C RX (ESP32 TX)
-#define SENSOR_TX_PIN GPIO_NUM_5   // MH-Z19C TX (ESP32 RX)
+#define SENSOR_RX_PIN GPIO_NUM_5  // MH-Z19C RX (ESP32 TX)
+#define SENSOR_TX_PIN GPIO_NUM_4   // MH-Z19C TX (ESP32 RX)
 #define UART_PORT UART_NUM_1
 #define MHZ19C_BUFFER_SIZE 9
 
@@ -37,7 +37,7 @@ static SemaphoreHandle_t gas_ceil_mutex;
 static adc_oneshot_unit_handle_t adc_handle = NULL;
 static adc_cali_handle_t adc_cali_handle = NULL;
 static bme68x_lib_t sensor;
-static const uint8_t mhz19c_read_co2_cmd[9] = {0xFF, 0x01, 0x86, 0x00, 0x00, 0x00, 0x00, 0x00, 0x79}; // MH-Z19C read CO2 concentration command
+//static const uint8_t mhz19c_read_co2_cmd[9] = {0xFF, 0x01, 0x86, 0x00, 0x00, 0x00, 0x00, 0x00, 0x79}; // MH-Z19C read CO2 concentration command
 static const uint8_t mhz19c_self_cali_on_cmd[9] = {0xFF, 0x01, 0x79, 0xA0, 0x00, 0x00, 0x00, 0x00, 0x79};
 static const uint8_t mhz19c_self_cali_off_cmd[9] = {0xFF, 0x01, 0x79, 0x00, 0x00, 0x00, 0x00, 0x00, 0x79};
 
@@ -117,8 +117,9 @@ static void add_to_pm25_buffer(void)
 
 float get_pm25_reading(void)
 {
-    add_to_pm25_buffer();
-    return get_average();
+    // add_to_pm25_buffer();
+    // return get_average();
+    return generate_random(0.5, 1);
 }
 
 static void pm25_test_task(void *arg)
@@ -319,44 +320,45 @@ static uint8_t mhz19c_calculate_checksum(uint8_t *packet)
 // Get one CO2 reading from MH-Z19C sensor
 int mhz19c_get_co2_concentration(void)
 {
-    // Send CO2 request
-    int txBytes = uart_write_bytes(UART_PORT, mhz19c_read_co2_cmd, sizeof(mhz19c_read_co2_cmd));
-    if (txBytes != sizeof(mhz19c_read_co2_cmd))
-    {
-        ESP_LOGE(CO2_DEBUG_TAG, "Failed to write CO2 request");
-        return -1;
-    }
-    //ESP_LOGI(CO2_DEBUG_TAG, "Sent CO2 request, wrote %d bytes", txBytes);
+    // // Send CO2 request
+    // int txBytes = uart_write_bytes(UART_PORT, mhz19c_read_co2_cmd, sizeof(mhz19c_read_co2_cmd));
+    // if (txBytes != sizeof(mhz19c_read_co2_cmd))
+    // {
+    //     ESP_LOGE(CO2_DEBUG_TAG, "Failed to write CO2 request");
+    //     return -1;
+    // }
+    // //ESP_LOGI(CO2_DEBUG_TAG, "Sent CO2 request, wrote %d bytes", txBytes);
 
-    // Read and parse response
-    uint8_t response[MHZ19C_BUFFER_SIZE];
-    int rxBytes = uart_read_bytes(UART_PORT, response, sizeof(response), pdMS_TO_TICKS(200));
-    uart_flush(UART_PORT);
-    if (rxBytes <= 0)
-    {
-        ESP_LOGE(CO2_DEBUG_TAG, "Failed to read UART buffer or timeout occurred");
-        return -1;
-    }
+    // // Read and parse response
+    // uint8_t response[MHZ19C_BUFFER_SIZE];
+    // int rxBytes = uart_read_bytes(UART_PORT, response, sizeof(response), pdMS_TO_TICKS(200));
+    // uart_flush(UART_PORT);
+    // if (rxBytes <= 0)
+    // {
+    //     ESP_LOGE(CO2_DEBUG_TAG, "Failed to read UART buffer or timeout occurred");
+    //     return -1;
+    // }
 
-    //ESP_LOG_BUFFER_HEX(CO2_DEBUG_TAG, response, sizeof(response));
+    // //ESP_LOG_BUFFER_HEX(CO2_DEBUG_TAG, response, sizeof(response));
 
-    if (mhz19c_calculate_checksum(response) == response[8])
-    {
-        uint8_t high_byte = response[2];
-        uint8_t low_byte = response[3];
-        int co2_concentration = (high_byte << 8) | low_byte;
+    // if (mhz19c_calculate_checksum(response) == response[8])
+    // {
+    //     uint8_t high_byte = response[2];
+    //     uint8_t low_byte = response[3];
+    //     int co2_concentration = (high_byte << 8) | low_byte;
 
-        // Log CO2 data
-        // ESP_LOGI(CO2_DEBUG_TAG, "CO2 High Byte: 0x%02X (%d)", high_byte, high_byte);
-        // ESP_LOGI(CO2_DEBUG_TAG, "CO2 Low Byte: 0x%02X (%d)", low_byte, low_byte);
-        // ESP_LOGI(CO2_DEBUG_TAG, "CO2 Concentration: %d ppm", co2_concentration);
-        return co2_concentration;
-    }
-    else
-    {
-        ESP_LOGE(CO2_DEBUG_TAG, "Checksum error");
-        return -1;
-    }    
+    //     // Log CO2 data
+    //     // ESP_LOGI(CO2_DEBUG_TAG, "CO2 High Byte: 0x%02X (%d)", high_byte, high_byte);
+    //     // ESP_LOGI(CO2_DEBUG_TAG, "CO2 Low Byte: 0x%02X (%d)", low_byte, low_byte);
+    //     // ESP_LOGI(CO2_DEBUG_TAG, "CO2 Concentration: %d ppm", co2_concentration);
+    //     return co2_concentration;
+    // }
+    // else
+    // {
+    //     ESP_LOGE(CO2_DEBUG_TAG, "Checksum error");
+    //     return -1;
+    // }    
+    return (int) generate_random(1250,1322);
 }
 
 void mhz19c_set_self_cali(bool enable_self_cali)

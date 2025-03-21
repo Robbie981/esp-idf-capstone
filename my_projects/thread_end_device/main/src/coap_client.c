@@ -24,7 +24,7 @@ typedef struct
 
 static void init_sensor_data(SensorData *data)
 {
-    strcpy(data->sensor_id, E7_SENSOR_UUID);
+    strcpy(data->sensor_id, PAC_SENSOR_UUID);
     data->temperature = -1;
     data->humidity = -1;
     data->pm25 = -1;
