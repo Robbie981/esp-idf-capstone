@@ -175,7 +175,7 @@ void bme68x_data_retrieve(bme68x_data_t *data)
         if (bme68x_lib_fetch_data(&sensor) > 0)
         {
             bme68x_lib_get_data(&sensor, data);
-            data->temperature -= 2.5;  // Temp offset correction
+            data->temperature -= 1.5;  // Temp offset correction
         }
         else
         {

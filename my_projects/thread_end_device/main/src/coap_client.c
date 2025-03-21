@@ -8,9 +8,9 @@
 #include "sensors.h"
 #include "cJSON.h"
 
-#define ROBBIE_TEST_SENSOR_UUID "187e906e-017c-4ced-a437-b70e6f82da14"
-#define PAC_SENSOR_UUID "" 
-#define E7_TEST_SENSOR_UUID "" 
+#define ROBBIE_TEST_SENSOR_UUID "28ff852c-cc27-40db-b0ac-ad03118b41ad"
+#define PAC_SENSOR_UUID "00b91458-96a0-466f-97dc-633abef4f5c0"
+#define E7_SENSOR_UUID "187e906e-017c-4ced-a437-b70e6f82da14" 
 
 typedef struct
 {
@@ -24,7 +24,7 @@ typedef struct
 
 static void init_sensor_data(SensorData *data)
 {
-    strcpy(data->sensor_id, ROBBIE_TEST_SENSOR_UUID);
+    strcpy(data->sensor_id, E7_SENSOR_UUID);
     data->temperature = -1;
     data->humidity = -1;
     data->pm25 = -1;
@@ -125,7 +125,7 @@ static void coap_process(void *aContext)
         end_device_data.pm25 = (float) get_pm25_reading();
         
         coap_send_data(&end_device_data);
-        vTaskDelay(3000 / portTICK_PERIOD_MS);
+        vTaskDelay(10000 / portTICK_PERIOD_MS);
     }
 }
 
